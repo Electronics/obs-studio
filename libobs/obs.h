@@ -634,6 +634,7 @@ EXPORT bool obs_enum_encoder_types(size_t idx, const char **id);
 EXPORT bool obs_enum_service_types(size_t idx, const char **id);
 
 /** Helper function for entering the OBS graphics context */
+// switches thread context to the graphics thread and grabs a pthread_lock ensuring concurrent access does not occur
 EXPORT void obs_enter_graphics(void);
 
 /** Helper function for leaving the OBS graphics context */

@@ -31,6 +31,7 @@
 #define unlock_textures(transition) \
 	pthread_mutex_unlock(&transition->transition_tex_mutex)
 
+// is transition_valid i.e. does the transition exist and make sure it is actually a transition *func bit is not checked lol
 static inline bool transition_valid(const obs_source_t *transition,
 				    const char *func)
 {
@@ -45,12 +46,14 @@ static inline bool transition_valid(const obs_source_t *transition,
 bool obs_transition_init(obs_source_t *transition)
 {
 	pthread_mutex_init_value(&transition->transition_mutex);
-	pthread_mutex_init_value(&transition->transition_tex_mutex);
+	pthread_mutex_init_value(&transition->transition_tex_mutex); // texture mutex
+	// check that mutex's were generated
 	if (pthread_mutex_init(&transition->transition_mutex, NULL) != 0)
 		return false;
 	if (pthread_mutex_init(&transition->transition_tex_mutex, NULL) != 0)
 		return false;
 
+	// defaults
 	transition->transition_alignment = OBS_ALIGN_LEFT | OBS_ALIGN_TOP;
 	transition->transition_texrender[0] =
 		gs_texrender_create(GS_RGBA, GS_ZS_NONE);
@@ -74,8 +77,8 @@ void obs_transition_free(obs_source_t *transition)
 }
 
 void obs_transition_clear(obs_source_t *transition)
-{
-	obs_source_t *s[2];
+{ // clears the transition (I presume if it was currently active?)
+	obs_source_t *s[2]; // to and from sources
 	bool active[2];
 
 	if (!transition_valid(transition, "obs_transition_clear"))
@@ -94,8 +97,8 @@ void obs_transition_clear(obs_source_t *transition)
 
 	for (size_t i = 0; i < 2; i++) {
 		if (s[i] && active[i])
-			obs_source_remove_active_child(transition, s[i]);
-		obs_source_release(s[i]);
+			obs_source_remove_active_child(transition, s[i]); // remove the transitions as childs under the source
+		obs_source_release(s[i]); // free memory
 	}
 }
 
@@ -111,6 +114,7 @@ static inline uint32_t get_cy(obs_source_t *tr)
 	return tr->transition_cy ? tr->transition_cy : tr->transition_actual_cy;
 }
 
+// matrix this matrix that, what the hell does it mean?
 static void recalculate_transition_matrix(obs_source_t *tr, size_t idx)
 {
 	obs_source_t *child;

@@ -1,6 +1,8 @@
 OBS Studio <https://obsproject.com>
 ===================================
 
+## This fork's aim is to track master, but provide some useful comments as I go through the code and try and understand it (as the documentation is rather lacking at the lower levels!!).
+
 .. image:: https://github.com/obsproject/obs-studio/actions/workflows/main.yml/badge.svg?branch=master&event=push
    :alt: OBS Studio Build Status - GitHub Actions
    :target: https://github.com/obsproject/obs-studio/actions/workflows/main.yml?query=event%3Apush+branch%3Amaster

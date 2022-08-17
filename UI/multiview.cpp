@@ -4,20 +4,23 @@
 #include "platform.hpp"
 #include "display-helpers.hpp"
 
-Multiview::Multiview()
+Multiview::Multiview() // constructor
 {
 	InitSafeAreas(&actionSafeMargin, &graphicsSafeMargin,
-		      &fourByThreeSafeMargin, &leftLine, &topLine, &rightLine);
+		      &fourByThreeSafeMargin, &leftLine, &topLine, &rightLine); // safe areas overlay init
 }
 
-Multiview::~Multiview()
+Multiview::~Multiview() // deconstructor
 {
+	// tell all our scenes we're no longer showing them
 	for (OBSWeakSource &weakSrc : multiviewScenes) {
-		OBSSource src = OBSGetStrongRef(weakSrc);
+		OBSSource src = OBSGetStrongRef(weakSrc); // why a strong refererence here, I have no idea, I guess in case the src in the next line stops existing?
 		if (src)
 			obs_source_dec_showing(src);
 	}
 
+	// get rid of the safe areas overlay
+	// obs enter_graphics
 	obs_enter_graphics();
 	gs_vertexbuffer_destroy(actionSafeMargin);
 	gs_vertexbuffer_destroy(graphicsSafeMargin);
@@ -34,7 +37,7 @@ static OBSSource CreateLabel(const char *name, size_t h)
 	OBSDataAutoRelease font = obs_data_create();
 
 	std::string text;
-	text += " ";
+	text += " "; // starts and end with " " to give margin around background bit
 	text += name;
 	text += " ";
 
@@ -74,7 +77,7 @@ void Multiview::Update(MultiviewLayout multiviewLayout, bool drawLabel,
 	multiviewScenes.clear();
 	multiviewLabels.clear();
 
-	struct obs_video_info ovi;
+	struct obs_video_info ovi; // video info as in the project video settings
 	obs_get_video_info(&ovi);
 
 	uint32_t w = ovi.base_width;
@@ -83,14 +86,18 @@ void Multiview::Update(MultiviewLayout multiviewLayout, bool drawLabel,
 	fh = float(h);
 	ratio = fw / fh;
 
+	// get existing scenes
 	struct obs_frontend_source_list scenes = {};
-	obs_frontend_get_scenes(&scenes);
+	obs_frontend_get_scenes(&scenes); // populates a structure with a list of reference-incremented scenes (whatever this means)
 
 	multiviewLabels.emplace_back(
-		CreateLabel(Str("StudioMode.Preview"), h / 2));
+		CreateLabel(Str("StudioMode.Preview"), h / 2)); // Add the default Preview/Program labels (although there are some layouts that don't have these labels...?)
 	multiviewLabels.emplace_back(
 		CreateLabel(Str("StudioMode.Program"), h / 2));
 
+	// pvwprgCX: Preview + Program Change in X per scene (not sure why it's "Preview + program")
+	// pvwprgCY: Preview + Program Change in Y per scene
+	// maxSrcs: maximum sources to bother looking through to add to the multiview
 	switch (multiviewLayout) {
 	case MultiviewLayout::HORIZONTAL_TOP_18_SCENES:
 		pvwprgCX = fw / 2;
@@ -131,11 +138,12 @@ void Multiview::Update(MultiviewLayout multiviewLayout, bool drawLabel,
 		maxSrcs = 8;
 	}
 
-	ppiCX = pvwprgCX - thicknessx2;
+	ppiCX = pvwprgCX - thicknessx2; // I presume thickness is the line thickness
 	ppiCY = pvwprgCY - thicknessx2;
 	ppiScaleX = (pvwprgCX - thicknessx2) / fw;
 	ppiScaleY = (pvwprgCY - thicknessx2) / fh;
 
+	// adjust the scenes section to have room for the preview/program
 	switch (multiviewLayout) {
 	case MultiviewLayout::HORIZONTAL_TOP_18_SCENES:
 		scenesCX = pvwprgCX / 3;
@@ -153,13 +161,14 @@ void Multiview::Update(MultiviewLayout multiviewLayout, bool drawLabel,
 		scenesCY = pvwprgCY / 2;
 	}
 
-	siCX = scenesCX - thicknessx2;
+	siCX = scenesCX - thicknessx2; // change in X per scene including line thickness
 	siCY = scenesCY - thicknessx2;
-	siScaleX = (scenesCX - thicknessx2) / fw;
+	siScaleX = (scenesCX - thicknessx2) / fw; // width of scene excluding line thickness?
 	siScaleY = (scenesCY - thicknessx2) / fh;
 
 	numSrcs = 0;
 	size_t i = 0;
+	// update the scenes for the multiview
 	while (i < scenes.sources.num && numSrcs < maxSrcs) {
 		obs_source_t *src = scenes.sources.array[i++];
 		OBSDataAutoRelease data = obs_source_get_private_settings(src);
@@ -171,17 +180,21 @@ void Multiview::Update(MultiviewLayout multiviewLayout, bool drawLabel,
 		// We have a displayable source.
 		numSrcs++;
 
+		// add it to our list (a "vector"), weak reference means when the source is destroyed elsewhere, so will our reference preventing memory leaks
 		multiviewScenes.emplace_back(OBSGetWeakRef(src));
-		obs_source_inc_showing(src);
+		obs_source_inc_showing(src); // tell the source it's visible and showing (I guess preview / program are always assumed to be rendered)
 
+		// generate the text label (#num - label)
 		std::string name = std::to_string(numSrcs) + " - " +
 				   obs_source_get_name(src);
 		multiviewLabels.emplace_back(CreateLabel(name.c_str(), h / 3));
 	}
 
+	// free memory
 	obs_frontend_source_list_free(&scenes);
 }
 
+// figure out the x offset of where to draw the labels given a source startX (cx)
 static inline uint32_t labelOffset(MultiviewLayout multiviewLayout,
 				   obs_source_t *label, uint32_t cx)
 {
@@ -212,21 +225,23 @@ static inline uint32_t labelOffset(MultiviewLayout multiviewLayout,
 
 void Multiview::Render(uint32_t cx, uint32_t cy)
 {
-	OBSBasic *main = (OBSBasic *)obs_frontend_get_main_window();
+	OBSBasic *main = (OBSBasic *)obs_frontend_get_main_window(); // QMainWindow ptr
 
 	uint32_t targetCX, targetCY;
 	int x, y;
 	float scale;
 
-	targetCX = (uint32_t)fw;
+	targetCX = (uint32_t)fw; // render video size (tied to project video size)
 	targetCY = (uint32_t)fh;
 
 	GetScaleAndCenterPos(targetCX, targetCY, cx, cy, x, y, scale);
 
+	// get sources
 	OBSSource previewSrc = main->GetCurrentSceneSource();
 	OBSSource programSrc = main->GetProgramSource();
 	bool studioMode = main->IsPreviewProgramMode();
 
+	// function to draw a box size x by y with background color
 	auto drawBox = [&](float cx, float cy, uint32_t colorVal) {
 		gs_effect_t *solid = obs_get_base_effect(OBS_EFFECT_SOLID);
 		gs_eparam_t *color =
@@ -234,9 +249,10 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 
 		gs_effect_set_color(color, colorVal);
 		while (gs_effect_loop(solid, "Solid"))
-			gs_draw_sprite(nullptr, 0, (uint32_t)cx, (uint32_t)cy);
+			gs_draw_sprite(nullptr, 0, (uint32_t)cx, (uint32_t)cy); // set to a nullptr for now?
 	};
 
+	// function to set the current viewerport to a region base bX,bY with size cX, cY?
 	auto setRegion = [&](float bx, float by, float cx, float cy) {
 		float vX = int(x + bx * scale);
 		float vY = int(y + by * scale);
@@ -251,6 +267,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 		startRegion(vX, vY, vCX, vCY, oL, oR, oT, oB);
 	};
 
+	// function to calculate the base X and Y (stored as sourceX, sourceY and siX, siY for incl. of line) given an index
 	auto calcBaseSource = [&](size_t i) {
 		switch (multiviewLayout) {
 		case MultiviewLayout::HORIZONTAL_TOP_18_SCENES:
@@ -311,6 +328,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 		siY = sourceY + thickness;
 	};
 
+	// function to figure out where to place program/preview + labels, outputs to sourceX, sourceY, labelX, labelY
 	auto calcPreviewProgram = [&](bool program) {
 		switch (multiviewLayout) {
 		case MultiviewLayout::HORIZONTAL_TOP_24_SCENES:
@@ -372,6 +390,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 		}
 	};
 
+	// function does what it says on the tin... I guess
 	auto paintAreaWithColor = [&](float tx, float ty, float cx, float cy,
 				      uint32_t color) {
 		gs_matrix_push();
@@ -394,7 +413,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 		// Handle all the offsets
 		calcBaseSource(i);
 
-		if (i >= numSrcs) {
+		if (i >= numSrcs) { // when would this ever happen???
 			// Just paint the background and continue
 			paintAreaWithColor(sourceX, sourceY, scenesCX, scenesCY,
 					   outerColor);
@@ -445,7 +464,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 				      (scenesCY * 0.85f) + sourceY, 0.0f);
 		gs_matrix_scale3f(ppiScaleX, ppiScaleY, 1.0f);
 		drawBox(obs_source_get_width(label),
-			obs_source_get_height(label) + int(sourceY * 0.015f),
+			obs_source_get_height(label) + int(sourceY * 0.015f), // naughty magic Y value offset
 			labelColor);
 		obs_source_video_render(label);
 		gs_matrix_pop();
@@ -464,7 +483,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 
 	obs_source_t *previewLabel = multiviewLabels[0];
 	offset = labelOffset(multiviewLayout, previewLabel, pvwprgCX);
-	calcPreviewProgram(false);
+	calcPreviewProgram(false); // isProgram = false
 
 	// Paint the background
 	paintAreaWithColor(sourceX, sourceY, ppiCX, ppiCY, backgroundColor);
@@ -511,7 +530,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 
 	obs_source_t *programLabel = multiviewLabels[1];
 	offset = labelOffset(multiviewLayout, programLabel, pvwprgCX);
-	calcPreviewProgram(true);
+	calcPreviewProgram(true); // isProgram = true
 
 	paintAreaWithColor(sourceX, sourceY, ppiCX, ppiCY, backgroundColor);
 
@@ -552,6 +571,7 @@ void Multiview::Render(uint32_t cx, uint32_t cy)
 	endRegion();
 }
 
+// return the source given a window position (for clicking on I presume)
 OBSSource Multiview::GetSourceByPosition(int x, int y)
 {
 	int pos = -1;
