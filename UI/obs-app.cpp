@@ -1205,6 +1205,8 @@ bool OBSApp::SetTheme(std::string name, std::string path)
 	path = GetTheme(name, path);
 	if (path.empty())
 		return false;
+
+	setStyleSheet("");
 	unique_ptr<OBSThemeMeta> themeMeta;
 	themeMeta.reset(ParseThemeMeta(path.c_str()));
 	string parentPath;
@@ -1222,7 +1224,6 @@ bool OBSApp::SetTheme(std::string name, std::string path)
 
 	QString mpath = QString("file:///") + lpath.c_str();
 	ParseExtraThemeData(path.c_str());
-	setStyle(new OBSIgnoreWheelProxyStyle);
 	setStyleSheet(mpath);
 	if (themeMeta) {
 		themeDarkMode = themeMeta->dark;
@@ -1238,6 +1239,7 @@ bool OBSApp::SetTheme(std::string name, std::string path)
 bool OBSApp::InitTheme()
 {
 	defaultPalette = palette();
+	setStyle(new OBSIgnoreWheelProxyStyle());
 
 	const char *themeName =
 		config_get_string(globalConfig, "General", "CurrentTheme3");
@@ -1512,7 +1514,7 @@ bool OBSApp::OBSInit()
 	setAttribute(Qt::AA_UseHighDpiPixmaps);
 #endif
 
-	qRegisterMetaType<VoidFunc>();
+	qRegisterMetaType<VoidFunc>("VoidFunc");
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 	if (QApplication::platformName() == "xcb") {
@@ -1532,6 +1534,10 @@ bool OBSApp::OBSInit()
 		QGuiApplication::platformNativeInterface();
 	obs_set_nix_platform_display(
 		native->nativeResourceForIntegration("display"));
+#endif
+
+#ifdef __APPLE__
+	setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
 #endif
 
 	if (!StartupOBS(locale.c_str(), GetProfilerNameStore()))
@@ -1719,7 +1725,9 @@ QString OBSTranslator::translate(const char *context, const char *sourceText,
 				 const char *disambiguation, int n) const
 {
 	const char *out = nullptr;
-	if (!App()->TranslateString(sourceText, &out))
+	QString str(sourceText);
+	str.replace(" ", "");
+	if (!App()->TranslateString(QT_TO_UTF8(str), &out))
 		return QString(sourceText);
 
 	UNUSED_PARAMETER(context);
